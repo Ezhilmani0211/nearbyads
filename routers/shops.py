@@ -6,13 +6,17 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 import os
 import math
-import requests
+
 
 load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI")
 
+if not MONGO_URI:
+    raise RuntimeError("MONGO_URI is not configured in .env")
+
 client = MongoClient(MONGO_URI)
+
 db = client["nearbyads"]
 
 shops_collection = db["shops"]
@@ -35,10 +39,13 @@ class CreateShopRequest(BaseModel):
     owner_name: str
     owner_email: str
     phone: str
+    whatsapp: str = ""
 
     address: str
     locality: str
     city: str
+    district: str = ""
+    state: str = ""
     pincode: str
 
     latitude: float
@@ -46,13 +53,23 @@ class CreateShopRequest(BaseModel):
 
     opening_time: str = ""
     closing_time: str = ""
+    open_24_hours: bool = False
+
+    working_days: list[str] = []
 
     website: str = ""
+    instagram: str = ""
+    facebook: str = ""
 
-    shop_images: list[str] = []
-    interior_image: str = ""
-    logo: str = ""
+    parking: bool = False
+    home_delivery: bool = False
+    online_order: bool = False
+    upi: bool = False
+    cash: bool = False
 
+    offers_available: bool = False
+    discount_available: bool = False
+    advertisement_radius: float = 1000
 
 # ============================================================
 # UPDATE SHOP REQUEST
@@ -66,10 +83,13 @@ class UpdateShopRequest(BaseModel):
     owner_name: str
     owner_email: str
     phone: str
+    whatsapp: str = ""
 
     address: str
     locality: str
     city: str
+    district: str = ""
+    state: str = ""
     pincode: str
 
     latitude: float
@@ -77,14 +97,23 @@ class UpdateShopRequest(BaseModel):
 
     opening_time: str = ""
     closing_time: str = ""
+    open_24_hours: bool = False
+
+    working_days: list[str] = []
 
     website: str = ""
+    instagram: str = ""
+    facebook: str = ""
 
-    shop_images: list[str] = []
-    interior_image: str = ""
-    logo: str = ""
+    parking: bool = False
+    home_delivery: bool = False
+    online_order: bool = False
+    upi: bool = False
+    cash: bool = False
 
-
+    offers_available: bool = False
+    discount_available: bool = False
+    advertisement_radius: float = 1000
 # ============================================================
 # SHOP RESPONSE
 # ============================================================
@@ -100,10 +129,14 @@ def shop_response(shop):
         [0, 0]
     )
 
+    # MongoDB GeoJSON coordinates:
+    # [longitude, latitude]
+
+    longitude = coordinates[0]
+    latitude = coordinates[1]
+
     return {
-        "id": str(
-            shop["_id"]
-        ),
+        "id": str(shop["_id"]),
 
         "shop_name": shop.get(
             "shop_name",
@@ -120,6 +153,10 @@ def shop_response(shop):
             ""
         ),
 
+        # ----------------------------------------------------
+        # OWNER
+        # ----------------------------------------------------
+
         "owner_name": shop.get(
             "owner_name",
             ""
@@ -134,6 +171,15 @@ def shop_response(shop):
             "phone",
             ""
         ),
+
+        "whatsapp": shop.get(
+            "whatsapp",
+            ""
+        ),
+
+        # ----------------------------------------------------
+        # ADDRESS
+        # ----------------------------------------------------
 
         "address": shop.get(
             "address",
@@ -150,14 +196,32 @@ def shop_response(shop):
             ""
         ),
 
+        "district": shop.get(
+            "district",
+            ""
+        ),
+
+        "state": shop.get(
+            "state",
+            ""
+        ),
+
         "pincode": shop.get(
             "pincode",
             ""
         ),
 
-        "latitude": coordinates[1],
+        # ----------------------------------------------------
+        # LOCATION
+        # ----------------------------------------------------
 
-        "longitude": coordinates[0],
+        "latitude": latitude,
+
+        "longitude": longitude,
+
+        # ----------------------------------------------------
+        # OPENING HOURS
+        # ----------------------------------------------------
 
         "opening_time": shop.get(
             "opening_time",
@@ -169,25 +233,86 @@ def shop_response(shop):
             ""
         ),
 
+        "open_24_hours": shop.get(
+            "open_24_hours",
+            False
+        ),
+
+        "working_days": shop.get(
+            "working_days",
+            []
+        ),
+
+        # ----------------------------------------------------
+        # ONLINE DETAILS
+        # ----------------------------------------------------
+
         "website": shop.get(
             "website",
             ""
         ),
 
-        "shop_images": shop.get(
-            "shop_images",
-            []
-        ),
-
-        "interior_image": shop.get(
-            "interior_image",
+        "instagram": shop.get(
+            "instagram",
             ""
         ),
 
-        "logo": shop.get(
-            "logo",
+        "facebook": shop.get(
+            "facebook",
             ""
         ),
+
+        # ----------------------------------------------------
+        # FACILITIES
+        # ----------------------------------------------------
+
+        "parking": shop.get(
+            "parking",
+            False
+        ),
+
+        "home_delivery": shop.get(
+            "home_delivery",
+            False
+        ),
+
+        "online_order": shop.get(
+            "online_order",
+            False
+        ),
+
+        "upi": shop.get(
+            "upi",
+            False
+        ),
+
+        "cash": shop.get(
+            "cash",
+            False
+        ),
+
+        # ----------------------------------------------------
+        # OFFERS / ADVERTISEMENT SETTINGS
+        # ----------------------------------------------------
+
+        "offers_available": shop.get(
+            "offers_available",
+            False
+        ),
+
+        "discount_available": shop.get(
+            "discount_available",
+            False
+        ),
+
+        "advertisement_radius": shop.get(
+            "advertisement_radius",
+            1000
+        ),
+
+        # ----------------------------------------------------
+        # STATUS
+        # ----------------------------------------------------
 
         "status": shop.get(
             "status",
@@ -210,15 +335,17 @@ def calculate_distance(
     lat2,
     lon2
 ):
+    """
+    Calculate distance between two GPS coordinates
+    using Haversine formula.
+
+    Returns distance in meters.
+    """
+
     earth_radius = 6371000
 
-    lat1 = math.radians(
-        lat1
-    )
-
-    lat2 = math.radians(
-        lat2
-    )
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
 
     delta_lat = math.radians(
         lat2 - lat1
@@ -229,17 +356,13 @@ def calculate_distance(
     )
 
     a = (
-        math.sin(
-            delta_lat / 2
-        ) ** 2
+        math.sin(delta_lat / 2) ** 2
         +
-        math.cos(lat1)
+        math.cos(lat1_rad)
         *
-        math.cos(lat2)
+        math.cos(lat2_rad)
         *
-        math.sin(
-            delta_lon / 2
-        ) ** 2
+        math.sin(delta_lon / 2) ** 2
     )
 
     c = 2 * math.atan2(
@@ -260,138 +383,104 @@ def get_nearby_shops(
     longitude: float,
     radius: int = 1000
 ):
-    query = f"""
-    [out:json];
-    (
-      node["shop"](around:{radius},{latitude},{longitude});
-      node["amenity"](around:{radius},{latitude},{longitude});
-      node["tourism"](around:{radius},{latitude},{longitude});
-    );
-    out center;
+    """
+    Get approved shops from MongoDB
+    within the requested radius.
+
+    latitude  = user latitude
+    longitude = user longitude
+    radius    = meters
     """
 
-    servers = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-        "https://overpass.private.coffee/api/interpreter",
-    ]
+    # --------------------------------------------------------
+    # Validate radius
+    # --------------------------------------------------------
 
-    elements = []
+    if radius <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Radius must be greater than 0"
+        )
 
-    for server in servers:
-        try:
-            response = requests.post(
-                server,
-                data=query,
-                timeout=20
-            )
+    # --------------------------------------------------------
+    # Get approved shops
+    # --------------------------------------------------------
 
-            if response.status_code == 200:
-                elements = response.json().get(
-                    "elements",
-                    []
-                )
+    shops = shops_collection.find({
+        "status": "approved"
+    })
 
-                if elements:
-                    break
+    nearby_shops = []
 
-        except requests.RequestException:
-            continue
+    # --------------------------------------------------------
+    # Calculate distance
+    # --------------------------------------------------------
 
-    shops = []
+    for shop in shops:
 
-    for element in elements:
-
-        tags = element.get(
-            "tags",
+        location = shop.get(
+            "location",
             {}
         )
 
-        name = tags.get(
-            "name"
+        coordinates = location.get(
+            "coordinates"
         )
 
-        if not name:
+        if not coordinates:
             continue
 
-        lat = element.get(
-            "lat"
-        )
-
-        lon = element.get(
-            "lon"
-        )
-
-        if lat is None or lon is None:
-
-            center = element.get(
-                "center",
-                {}
-            )
-
-            lat = center.get(
-                "lat"
-            )
-
-            lon = center.get(
-                "lon"
-            )
-
-        if lat is None or lon is None:
+        if len(coordinates) != 2:
             continue
+
+        # GeoJSON:
+        # coordinates[0] = longitude
+        # coordinates[1] = latitude
+
+        shop_longitude = coordinates[0]
+        shop_latitude = coordinates[1]
 
         distance = calculate_distance(
             latitude,
             longitude,
-            lat,
-            lon
+            shop_latitude,
+            shop_longitude
         )
 
-        shops.append({
-            "id": str(
-                element.get(
-                    "id",
-                    ""
-                )
-            ),
+        # ----------------------------------------------------
+        # Check radius
+        # ----------------------------------------------------
 
-            "shop_name": name,
+        if distance <= radius:
 
-            "category": (
-                tags.get("shop")
-                or tags.get("amenity")
-                or tags.get("tourism")
-                or "other"
-            ),
+            shop_data = shop_response(shop)
 
-            "address": tags.get(
-                "addr:street",
-                ""
-            ),
-
-            "latitude": lat,
-
-            "longitude": lon,
-
-            "distance": round(
+            shop_data["distance"] = round(
                 distance
-            ),
+            )
 
-            "source": "osm",
+            shop_data["source"] = "mongodb"
 
-            "status": "approved",
+            shop_data["has_ad"] = False
 
-            "has_ad": False,
-        })
+            nearby_shops.append(
+                shop_data
+            )
 
-    shops.sort(
-        key=lambda shop:
-        shop["distance"]
+    # --------------------------------------------------------
+    # Sort nearest first
+    # --------------------------------------------------------
+
+    nearby_shops.sort(
+        key=lambda shop: shop["distance"]
     )
 
     return {
-        "count": len(shops),
-        "shops": shops
+        "count": len(
+            nearby_shops
+        ),
+
+        "shops": nearby_shops
     }
 
 
@@ -404,28 +493,62 @@ def create_shop(
     request: CreateShopRequest
 ):
 
-    existing_shop = shops_collection.find_one({
-        "location": {
-            "$near": {
-                "$geometry": {
-                    "type": "Point",
-                    "coordinates": [
-                        request.longitude,
-                        request.latitude
-                    ]
-                },
+    # --------------------------------------------------------
+    # Validate advertisement radius
+    # --------------------------------------------------------
 
-                "$maxDistance": 100
-            }
-        }
-    })
-
-    if existing_shop:
+    if request.advertisement_radius <= 0:
         raise HTTPException(
             status_code=400,
-            detail=
-                "A shop already exists near this location"
+            detail="Advertisement radius must be greater than 0"
         )
+
+    # --------------------------------------------------------
+    # Check nearby duplicate shop
+    # --------------------------------------------------------
+
+    existing_shop = None
+
+    try:
+
+        existing_shop = shops_collection.find_one({
+            "location": {
+                "$near": {
+                    "$geometry": {
+                        "type": "Point",
+                        "coordinates": [
+                            request.longitude,
+                            request.latitude
+                        ]
+                    },
+                    "$maxDistance": 100
+                }
+            }
+        })
+
+    except Exception:
+        # If 2dsphere index does not exist,
+        # continue with normal insertion.
+        existing_shop = None
+
+    if existing_shop:
+
+        raise HTTPException(
+            status_code=400,
+            detail="A shop already exists near this location"
+        )
+
+    # --------------------------------------------------------
+    # Create timestamp
+    # --------------------------------------------------------
+
+    now = datetime.now(
+        timezone.utc
+    )
+
+    # --------------------------------------------------------
+    # Create shop document
+    # --------------------------------------------------------
 
     shop = {
 
@@ -438,6 +561,10 @@ def create_shop(
         "description":
             request.description,
 
+        # ----------------------------------------------------
+        # OWNER
+        # ----------------------------------------------------
+
         "owner_name":
             request.owner_name,
 
@@ -446,6 +573,13 @@ def create_shop(
 
         "phone":
             request.phone,
+
+        "whatsapp":
+            request.whatsapp,
+
+        # ----------------------------------------------------
+        # ADDRESS
+        # ----------------------------------------------------
 
         "address":
             request.address,
@@ -456,11 +590,23 @@ def create_shop(
         "city":
             request.city,
 
+        "district":
+            request.district,
+
+        "state":
+            request.state,
+
         "pincode":
             request.pincode,
 
+        # ----------------------------------------------------
+        # LOCATION
+        # ----------------------------------------------------
+
         "location": {
-            "type": "Point",
+
+            "type":
+                "Point",
 
             "coordinates": [
                 request.longitude,
@@ -468,43 +614,91 @@ def create_shop(
             ]
         },
 
+        # ----------------------------------------------------
+        # OPENING HOURS
+        # ----------------------------------------------------
+
         "opening_time":
             request.opening_time,
 
         "closing_time":
             request.closing_time,
 
+        "open_24_hours":
+            request.open_24_hours,
+
+        "working_days":
+            request.working_days,
+
+        # ----------------------------------------------------
+        # ONLINE DETAILS
+        # ----------------------------------------------------
+
         "website":
             request.website,
 
-        "shop_images":
-            request.shop_images,
+        "instagram":
+            request.instagram,
 
-        "interior_image":
-            request.interior_image,
+        "facebook":
+            request.facebook,
 
-        "logo":
-            request.logo,
+        # ----------------------------------------------------
+        # FACILITIES
+        # ----------------------------------------------------
+
+        "parking":
+            request.parking,
+
+        "home_delivery":
+            request.home_delivery,
+
+        "online_order":
+            request.online_order,
+
+        "upi":
+            request.upi,
+
+        "cash":
+            request.cash,
+
+        # ----------------------------------------------------
+        # OFFERS / ADVERTISEMENT
+        # ----------------------------------------------------
+
+        "offers_available":
+            request.offers_available,
+
+        "discount_available":
+            request.discount_available,
+
+        "advertisement_radius":
+            request.advertisement_radius,
+
+        # ----------------------------------------------------
+        # STATUS
+        # ----------------------------------------------------
 
         "status":
             "pending",
 
         "created_at":
-            datetime.now(
-                timezone.utc
-            ),
+            now,
 
         "updated_at":
-            datetime.now(
-                timezone.utc
-            )
+            now
     }
+
+    # --------------------------------------------------------
+    # Insert
+    # --------------------------------------------------------
 
     result = shops_collection.insert_one(
         shop
     )
 
     return {
+
         "message":
             "Shop submitted for approval",
 
@@ -527,10 +721,12 @@ def get_my_shops(
     owner_email: str
 ):
 
-    shops = shops_collection.find({
-        "owner_email":
-            owner_email
-    }).sort(
+    shops = shops_collection.find(
+        {
+            "owner_email":
+                owner_email
+        }
+    ).sort(
         "created_at",
         -1
     )
@@ -546,6 +742,7 @@ def get_my_shops(
         )
 
     return {
+
         "count":
             len(result),
 
@@ -578,13 +775,25 @@ def update_shop(
         )
 
     # --------------------------------------------------------
-    # Find Existing Shop
+    # Validate advertisement radius
     # --------------------------------------------------------
 
-    existing_shop = shops_collection.find_one({
-        "_id":
-            ObjectId(shop_id)
-    })
+    if request.advertisement_radius <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Advertisement radius must be greater than 0"
+        )
+
+    # --------------------------------------------------------
+    # Find shop
+    # --------------------------------------------------------
+
+    existing_shop = shops_collection.find_one(
+        {
+            "_id":
+                ObjectId(shop_id)
+        }
+    )
 
     if not existing_shop:
 
@@ -594,10 +803,11 @@ def update_shop(
         )
 
     # --------------------------------------------------------
-    # Update Shop
+    # Update
     # --------------------------------------------------------
 
     shops_collection.update_one(
+
         {
             "_id":
                 ObjectId(shop_id)
@@ -615,6 +825,10 @@ def update_shop(
                 "description":
                     request.description,
 
+                # ------------------------------------------------
+                # OWNER
+                # ------------------------------------------------
+
                 "owner_name":
                     request.owner_name,
 
@@ -623,6 +837,13 @@ def update_shop(
 
                 "phone":
                     request.phone,
+
+                "whatsapp":
+                    request.whatsapp,
+
+                # ------------------------------------------------
+                # ADDRESS
+                # ------------------------------------------------
 
                 "address":
                     request.address,
@@ -633,10 +854,21 @@ def update_shop(
                 "city":
                     request.city,
 
+                "district":
+                    request.district,
+
+                "state":
+                    request.state,
+
                 "pincode":
                     request.pincode,
 
+                # ------------------------------------------------
+                # LOCATION
+                # ------------------------------------------------
+
                 "location": {
+
                     "type":
                         "Point",
 
@@ -646,26 +878,71 @@ def update_shop(
                     ]
                 },
 
+                # ------------------------------------------------
+                # OPENING HOURS
+                # ------------------------------------------------
+
                 "opening_time":
                     request.opening_time,
 
                 "closing_time":
                     request.closing_time,
 
+                "open_24_hours":
+                    request.open_24_hours,
+
+                "working_days":
+                    request.working_days,
+
+                # ------------------------------------------------
+                # ONLINE DETAILS
+                # ------------------------------------------------
+
                 "website":
                     request.website,
 
-                "shop_images":
-                    request.shop_images,
+                "instagram":
+                    request.instagram,
 
-                "interior_image":
-                    request.interior_image,
+                "facebook":
+                    request.facebook,
 
-                "logo":
-                    request.logo,
+                # ------------------------------------------------
+                # FACILITIES
+                # ------------------------------------------------
 
-                # Edited shops require
-                # admin approval again.
+                "parking":
+                    request.parking,
+
+                "home_delivery":
+                    request.home_delivery,
+
+                "online_order":
+                    request.online_order,
+
+                "upi":
+                    request.upi,
+
+                "cash":
+                    request.cash,
+
+                # ------------------------------------------------
+                # OFFERS / ADVERTISEMENT
+                # ------------------------------------------------
+
+                "offers_available":
+                    request.offers_available,
+
+                "discount_available":
+                    request.discount_available,
+
+                "advertisement_radius":
+                    request.advertisement_radius,
+
+                # ------------------------------------------------
+                # Edited shop requires admin approval again.
+                # ------------------------------------------------
+
                 "status":
                     "pending",
 
@@ -697,10 +974,12 @@ def update_shop(
 @router.get("/pending")
 def get_pending_shops():
 
-    shops = shops_collection.find({
-        "status":
-            "pending"
-    })
+    shops = shops_collection.find(
+        {
+            "status":
+                "pending"
+        }
+    )
 
     result = []
 
@@ -741,6 +1020,7 @@ def approve_shop(
         )
 
     result = shops_collection.update_one(
+
         {
             "_id":
                 ObjectId(shop_id)
@@ -770,7 +1050,13 @@ def approve_shop(
     return {
 
         "message":
-            "Shop approved successfully"
+            "Shop approved successfully",
+
+        "shop_id":
+            shop_id,
+
+        "status":
+            "approved"
     }
 
 
@@ -793,6 +1079,7 @@ def reject_shop(
         )
 
     result = shops_collection.update_one(
+
         {
             "_id":
                 ObjectId(shop_id)
@@ -822,7 +1109,13 @@ def reject_shop(
     return {
 
         "message":
-            "Shop rejected successfully"
+            "Shop rejected successfully",
+
+        "shop_id":
+            shop_id,
+
+        "status":
+            "rejected"
     }
 
 
@@ -833,10 +1126,15 @@ def reject_shop(
 @router.get("/approved")
 def get_approved_shops():
 
-    shops = shops_collection.find({
-        "status":
-            "approved"
-    })
+    shops = shops_collection.find(
+        {
+            "status":
+                "approved"
+        }
+    ).sort(
+        "created_at",
+        -1
+    )
 
     result = []
 

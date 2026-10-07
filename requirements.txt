@@ -8,4 +8,4 @@ bcrypt
 pydantic
 email-validator
 requests
-httpx
+httpxPyJWT

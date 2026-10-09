@@ -5,11 +5,8 @@ import bcrypt
 import jwt
 import os
 import random
-import smtplib
 import secrets
-
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
@@ -32,28 +29,11 @@ JWT_EXPIRES_IN = os.getenv(
 
 
 # =========================================================
-# EMAIL CONFIGURATION
+# EMAIL CONFIGURATION (BREVO API)
 # =========================================================
 
-SMTP_HOST = os.getenv(
-    "SMTP_HOST",
-    "smtp.gmail.com"
-)
-
-SMTP_PORT = int(
-    os.getenv(
-        "SMTP_PORT",
-        "587"
-    )
-)
-
-SMTP_EMAIL = os.getenv(
-    "SMTP_EMAIL"
-)
-
-SMTP_PASSWORD = os.getenv(
-    "SMTP_PASSWORD"
-)
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 
 
 # =========================================================
@@ -111,7 +91,7 @@ def generate_verification_code():
 
 
 # =========================================================
-# SEND EMAIL
+# SEND EMAIL (BREVO HTTP API - RENDER COMPATIBLE)
 # =========================================================
 
 def send_verification_email(
@@ -119,21 +99,20 @@ def send_verification_email(
     verification_code
 ):
 
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
+    if not BREVO_API_KEY or not SENDER_EMAIL:
         raise Exception(
-            "SMTP email configuration is missing"
+            "Brevo email configuration is missing"
         )
 
-    message = MIMEMultipart()
+    url = "https://api.brevo.com/v3/smtp/email"
 
-    message["From"] = SMTP_EMAIL
-    message["To"] = email
-    message["Subject"] = (
-        "NearbyAds - Email Verification Code"
-    )
+    headers = {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json"
+    }
 
-    body = f"""
-Hello,
+    body = f"""Hello,
 
 Welcome to NearbyAds!
 
@@ -143,44 +122,35 @@ Your email verification code is:
 
 This code is valid for 10 minutes.
 
-Please enter this code in the NearbyAds
-application to verify your email address.
+Please enter this code in the NearbyAds application to verify your email address.
 
-If you did not create a NearbyAds account,
-please ignore this email.
+If you did not create a NearbyAds account, please ignore this email.
 
 Regards,
-NearbyAds Team
-"""
+NearbyAds Team"""
 
-    message.attach(
-        MIMEText(
-            body,
-            "plain"
-        )
-    )
+    payload = {
+        "sender": {
+            "name": "NearbyAds",
+            "email": SENDER_EMAIL
+        },
+        "to": [
+            {
+                "email": email
+            }
+        ],
+        "subject": "NearbyAds - Email Verification Code",
+        "textContent": body
+    }
 
-    with smtplib.SMTP(
-        SMTP_HOST,
-        SMTP_PORT
-    ) as server:
+    response = requests.post(url, json=payload, headers=headers)
 
-        server.starttls()
-
-        server.login(
-            SMTP_EMAIL,
-            SMTP_PASSWORD
-        )
-
-        server.sendmail(
-            SMTP_EMAIL,
-            email,
-            message.as_string()
-        )
+    if response.status_code not in [200, 201]:
+        raise Exception(f"Brevo API error: {response.text}")
 
 
 # =========================================================
-# SEND PASSWORD RESET EMAIL
+# SEND PASSWORD RESET EMAIL (BREVO HTTP API - RENDER COMPATIBLE)
 # =========================================================
 
 def send_password_reset_email(
@@ -188,21 +158,20 @@ def send_password_reset_email(
     reset_code
 ):
 
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
+    if not BREVO_API_KEY or not SENDER_EMAIL:
         raise Exception(
-            "SMTP email configuration is missing"
+            "Brevo email configuration is missing"
         )
 
-    message = MIMEMultipart()
+    url = "https://api.brevo.com/v3/smtp/email"
 
-    message["From"] = SMTP_EMAIL
-    message["To"] = email
-    message["Subject"] = (
-        "NearbyAds - Password Reset Code"
-    )
+    headers = {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json"
+    }
 
-    body = f"""
-Hello,
+    body = f"""Hello,
 
 You requested to reset your NearbyAds password.
 
@@ -212,40 +181,31 @@ Your password reset verification code is:
 
 This code is valid for 10 minutes.
 
-Enter this code in the NearbyAds application
-to continue resetting your password.
+Enter this code in the NearbyAds application to continue resetting your password.
 
-If you did not request a password reset,
-please ignore this email.
+If you did not request a password reset, please ignore this email.
 
 Regards,
-NearbyAds Team
-"""
+NearbyAds Team"""
 
-    message.attach(
-        MIMEText(
-            body,
-            "plain"
-        )
-    )
+    payload = {
+        "sender": {
+            "name": "NearbyAds",
+            "email": SENDER_EMAIL
+        },
+        "to": [
+            {
+                "email": email
+            }
+        ],
+        "subject": "NearbyAds - Password Reset Code",
+        "textContent": body
+    }
 
-    with smtplib.SMTP(
-        SMTP_HOST,
-        SMTP_PORT
-    ) as server:
+    response = requests.post(url, json=payload, headers=headers)
 
-        server.starttls()
-
-        server.login(
-            SMTP_EMAIL,
-            SMTP_PASSWORD
-        )
-
-        server.sendmail(
-            SMTP_EMAIL,
-            email,
-            message.as_string()
-        )
+    if response.status_code not in [200, 201]:
+        raise Exception(f"Brevo API error: {response.text}")
 
 
 # =========================================================
